@@ -375,7 +375,10 @@ trimBtn.addEventListener('click', async () => {
   try{
     const { createFFmpeg, fetchFile } = FFmpeg;
     if(!ffmpegInstance){
-      ffmpegInstance = createFFmpeg({ log:false });
+      ffmpegInstance = createFFmpeg({
+        log:false,
+        corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+      });
       await ffmpegInstance.load();
     }
     const ffmpeg = ffmpegInstance;
