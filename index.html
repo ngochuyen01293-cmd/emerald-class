@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Emerald's Class – Nhật ký lớp học</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Emerald's Class">
+<meta name="theme-color" content="#5a7d5a">
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+<style>
+  :root{
+    --ink:#2b2a26; --paper:#faf7f0; --card:#ffffff; --line:#e4dfd1;
+    --moss:#5a7d5a; --moss-dark:#3f5c3f; --clay:#b5652f; --danger:#b0392f;
+    --sky:#eaf5fb; --sun:#f6b93b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:20px 16px 60px; background:var(--paper); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.5; max-width:480px; margin-inline:auto;
+  }
+  h1{ font-size:20px; font-weight:600; margin:0 0 4px; }
+  .sub{ color:#6b675c; font-size:13px; margin:0 0 12px; }
+  .banner{
+    position:relative; border-radius:18px; overflow:hidden; margin-bottom:16px;
+    background:linear-gradient(180deg,#bfe4f5 0%,#e8f6fb 70%,#fdf6e3 100%);
+  }
+  .banner svg{ display:block; width:100%; height:auto; }
+  .banner-text{
+    position:absolute; left:0; right:0; bottom:10px; text-align:center;
+  }
+  .banner-title{
+    font-size:22px; font-weight:800; color:#3f5c3f; text-shadow:0 1px 0 #fff;
+    margin:0;
+  }
+  .banner-subtitle{ font-size:12px; color:#57544a; margin:2px 0 0; }
+  .warn{
+    background:#fff6e6; border:1px solid #ecd9b8; border-radius:10px;
+    padding:10px 12px; font-size:12px; color:#7a5c1e; margin:0 0 20px;
+  }
+  .tabs{ display:flex; gap:8px; margin-bottom:20px; }
+  .tab{
+    flex:1; padding:10px; text-align:center; border-radius:10px; border:1px solid var(--line);
+    background:var(--card); font-size:14px; font-weight:500; cursor:pointer; color:#77735f;
+  }
+  .tab.active{ background:var(--moss); color:#fff; border-color:var(--moss); }
+  section{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:16px; }
+  label{ display:block; font-size:13px; color:#57544a; margin:12px 0 5px; }
+  label:first-of-type{ margin-top:0; }
+  input[type="text"], input[type="url"], textarea, select{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    font-size:15px; font-family:inherit; background:#fdfcf9; color:var(--ink);
+  }
+  input[type="file"]{
+    width:100%; padding:10px; border:1px dashed var(--line); border-radius:10px;
+    font-size:14px; background:#fdfcf9;
+  }
+  input[type="range"]{ width:100%; accent-color:var(--moss); }
+  .range-row{ display:flex; justify-content:space-between; font-size:12px; color:#8a8677; margin-top:2px; }
+  textarea{ min-height:70px; resize:vertical; }
+  .readonly{ background:#f3f0e6; color:#8a8677; }
+  video{ width:100%; border-radius:10px; background:#000; margin-top:6px; display:block; }
+  canvas{ display:none; }
+  button{
+    border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:500;
+    cursor:pointer; width:100%; margin-top:14px;
+  }
+  .btn-primary{ background:var(--moss); color:#fff; }
+  .btn-secondary{ background:#eee8d8; color:var(--ink); }
+  .btn-primary:disabled, .btn-secondary:disabled{ opacity:0.6; }
+  .error{ color:var(--danger); font-size:13px; margin-top:8px; }
+  .status{ font-size:13px; color:#6b675c; margin-top:8px; min-height:16px; }
+  .hint{ font-size:12px; color:#8a8677; margin-top:6px; }
+  .empty{ font-size:14px; color:#8a8677; text-align:center; padding:24px 0; }
+  h2{ font-size:15px; font-weight:600; margin:0 0 10px; }
+
+  .report-card{
+    position:relative; overflow:hidden;
+    background:linear-gradient(180deg, var(--sky) 0%, #ffffff 55%);
+    border:1px solid var(--line); border-radius:16px; margin-top:16px;
+  }
+  .report-header{ position:relative; padding:16px 16px 10px; text-align:center; }
+  .report-title{ font-size:15px; font-weight:700; color:var(--moss-dark); letter-spacing:0.3px; }
+  .report-deco{ position:absolute; font-size:18px; opacity:0.9; }
+  .deco-sun{ top:8px; right:14px; }
+  .deco-star1{ top:6px; left:16px; }
+  .deco-star2{ bottom:2px; left:44px; font-size:12px; }
+  .report-fields{ display:flex; gap:8px; padding:0 14px 12px; flex-wrap:wrap; }
+  .field-chip{
+    display:flex; align-items:center; gap:6px; background:#ffffff;
+    border:1px solid var(--line); border-radius:999px; padding:6px 12px;
+    font-size:13px; font-weight:500;
+  }
+  .field-chip .icon{ font-size:14px; }
+  .report-video{ background:#000; }
+  .report-video video{ margin:0; border-radius:0; max-height:260px; }
+  .report-note{
+    margin:14px; padding:14px 16px; background:#fffdf6;
+    border:1px solid #ecd9b8; border-radius:12px; font-size:14px; white-space:pre-wrap;
+    position:relative;
+  }
+  .report-note::before{
+    content:"✎"; position:absolute; top:-10px; left:14px; background:var(--sun);
+    color:#fff; width:22px; height:22px; border-radius:50%; display:flex;
+    align-items:center; justify-content:center; font-size:12px;
+  }
+  .report-date{ font-size:12px; color:#8a8677; padding:0 16px 14px; }
+</style>
+</head>
+<body>
+
+  <div class="banner">
+    <svg viewBox="0 0 480 150" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="400" cy="34" r="26" fill="#f6b93b"/>
+      <g stroke="#f6b93b" stroke-width="4" stroke-linecap="round">
+        <line x1="400" y1="-2" x2="400" y2="6"/>
+        <line x1="400" y1="62" x2="400" y2="70"/>
+        <line x1="366" y1="34" x2="358" y2="34"/>
+        <line x1="442" y1="34" x2="450" y2="34"/>
+        <line x1="376" y1="10" x2="371" y2="5"/>
+        <line x1="424" y1="10" x2="429" y2="5"/>
+        <line x1="376" y1="58" x2="371" y2="63"/>
+        <line x1="424" y1="58" x2="429" y2="63"/>
+      </g>
+      <ellipse cx="60" cy="40" rx="34" ry="16" fill="#ffffff"/>
+      <ellipse cx="88" cy="34" rx="26" ry="14" fill="#ffffff"/>
+      <ellipse cx="140" cy="55" rx="30" ry="14" fill="#ffffff"/>
+      <ellipse cx="165" cy="48" rx="20" ry="11" fill="#ffffff"/>
+      <path d="M0 150 L0 110 Q40 90 90 108 T190 106 T290 112 T390 104 T480 112 L480 150 Z" fill="#eafaf0"/>
+      <circle cx="40" cy="100" r="5" fill="#ef8577"/>
+      <circle cx="60" cy="90" r="4" fill="#f6b93b"/>
+      <circle cx="440" cy="95" r="5" fill="#7fae7f"/>
+      <path d="M230 60 l4 8 9 1 -6.5 6.3 1.5 9 -8-4.5 -8 4.5 1.5-9L217 69l9-1z" fill="#ef8577"/>
+      <path d="M290 30 l3 6 6.5 1 -4.7 4.6 1.1 6.6 -5.9-3.1 -5.9 3.1 1.1-6.6L281 37l6.5-1z" fill="#5a7d5a"/>
+      <ellipse cx="120" cy="118" rx="7" ry="9" fill="#ef8577"/>
+      <line x1="120" y1="127" x2="120" y2="136" stroke="#b5652f" stroke-width="1.5"/>
+      <ellipse cx="350" cy="122" rx="7" ry="9" fill="#7fae7f"/>
+      <line x1="350" y1="131" x2="350" y2="140" stroke="#b5652f" stroke-width="1.5"/>
+    </svg>
+    <div class="banner-text">
+      <p class="banner-title">The Emerald's Class</p>
+      <p class="banner-subtitle">Nhật ký lớp học · Class journal</p>
+    </div>
+  </div>
+
+  <p class="sub">Giáo viên chọn video, cắt đoạn cần dùng, gắn tên bé/lớp/nhận xét — phụ huynh xem trực tiếp, không cần Zalo.<br>
+  Teacher selects a video, trims it, adds the child's name/class/note — parents watch it directly, no Zalo needed.</p>
+  <p class="warn">Lưu ý: bản demo này chạy trong trình duyệt của bạn, dữ liệu mất khi tải lại trang (F5).<br>
+  Note: this is a browser-only demo — data is lost if you reload the page (F5).</p>
+
+  <div class="tabs">
+    <div class="tab active" id="tabTeacher">Giáo viên / Teacher</div>
+    <div class="tab" id="tabParent">Phụ huynh / Parent</div>
+  </div>
+
+  <!-- TEACHER VIEW -->
+  <div id="teacherView">
+    <section>
+      <h2>1. Chọn và cắt video / Choose &amp; trim video</h2>
+      <input type="file" id="videoFile" accept="video/*">
+      <video id="sourceVideo" playsinline preload="metadata" onerror="window.reportVidErr(this)"></video>
+
+      <label for="startInput">Điểm bắt đầu (giây) / Start point (seconds)</label>
+      <input type="number" id="startInput" min="0" step="0.5" value="0">
+
+      <label for="endInput">Điểm kết thúc (giây) / End point (seconds)</label>
+      <input type="number" id="endInput" min="0" step="0.5" value="5">
+      <p class="hint">Nếu video xem trước không hiện được, bạn vẫn có thể tự gõ số giây và cắt bình thường — không bắt buộc phải xem trước được. / If the preview doesn't play, you can still type the seconds directly and trim normally — a working preview isn't required.</p>
+
+      <button class="btn-secondary" id="trimBtn">Cắt đoạn đã chọn / Trim clip</button>
+      <button class="btn-secondary" id="useOriginalBtn">Dùng nguyên video, không cắt / Use full video, no trim</button>
+      <div class="status" id="trimStatus"></div>
+      <div class="error" id="trimError"></div>
+      <p class="hint" id="unsupportedHint" style="display:none;">Nếu vẫn không cắt được, hãy cắt video trước bằng ứng dụng Ảnh sẵn có trên điện thoại, rồi tải lên và bấm "Dùng nguyên video" ở trên. / If trimming still fails, trim it first in your Photos app, then upload it here and tap "Use full video" above.</p>
+
+      <div id="trimmedPreviewWrap" style="display:none;">
+        <label>Đoạn đã cắt / Trimmed preview</label>
+        <video id="trimmedPreview" controls playsinline onerror="window.reportVidErr(this)"></video>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Thông tin gửi phụ huynh / Info for parents</h2>
+      <label for="studentInput">Tên học sinh / Student's name</label>
+      <input type="text" id="studentInput" list="studentList" placeholder="VD/E.g.: Bé Minh Anh">
+      <datalist id="studentList"></datalist>
+
+      <label for="classInput">Lớp / Class</label>
+      <input type="text" id="classInput" placeholder="VD/E.g.: Penguin 1">
+
+      <label>Ngày / Date</label>
+      <input type="text" class="readonly" id="todayDisplay" readonly>
+
+      <label for="noteInput">Nhận xét về bé / Note about the child</label>
+      <textarea id="noteInput" placeholder="Hôm nay bé... / Today, ..."></textarea>
+
+      <button class="btn-primary" id="postBtn" disabled>Đăng cho phụ huynh xem / Post for parents</button>
+      <div class="error" id="postError"></div>
+      <div class="status" id="postStatus"></div>
+    </section>
+
+    <section>
+      <h2>Đã đăng gần đây / Recent posts</h2>
+      <div id="teacherFeed"><div class="empty">Chưa có bài nào. / No posts yet.</div></div>
+    </section>
+  </div>
+
+  <!-- PARENT VIEW -->
+  <div id="parentView" style="display:none;">
+    <section>
+      <h2>Xem video của con / Watch your child's video</h2>
+      <label for="parentStudentSelect">Chọn học sinh / Choose student</label>
+      <select id="parentStudentSelect"></select>
+    </section>
+    <div id="parentFeed"></div>
+  </div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+/* ---------- Dữ liệu trong bộ nhớ tạm (mất khi tải lại trang) ---------- */
+const appData = { students: [], posts: [] };
+const videoBlobs = new Map(); // videoKey -> Blob
+
+/* ---------- Tabs ---------- */
+const tabTeacher = document.getElementById('tabTeacher');
+const tabParent = document.getElementById('tabParent');
+const teacherView = document.getElementById('teacherView');
+const parentView = document.getElementById('parentView');
+
+tabTeacher.onclick = () => {
+  tabTeacher.classList.add('active'); tabParent.classList.remove('active');
+  teacherView.style.display = 'block'; parentView.style.display = 'none';
+};
+tabParent.onclick = () => {
+  tabParent.classList.add('active'); tabTeacher.classList.remove('active');
+  parentView.style.display = 'block'; teacherView.style.display = 'none';
+  renderParentView();
+};
+
+const todayDisplay = document.getElementById('todayDisplay');
+const today = new Date();
+const todayStr = today.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' });
+todayDisplay.value = todayStr;
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+function fmt(t){
+  const m = Math.floor(t/60), s = Math.floor(t%60);
+  return m + ':' + String(s).padStart(2,'0');
+}
+function describeVideoError(err){
+  if(!err) return 'Không rõ lỗi / Unknown error';
+  const map = {
+    1: 'MEDIA_ERR_ABORTED (bị huỷ giữa chừng)',
+    2: 'MEDIA_ERR_NETWORK (lỗi tải dữ liệu)',
+    3: 'MEDIA_ERR_DECODE (dữ liệu video lỗi/hỏng)',
+    4: 'MEDIA_ERR_SRC_NOT_SUPPORTED (định dạng không được hỗ trợ)'
+  };
+  return (map[err.code] || ('code ' + err.code));
+}
+window.reportVidErr = function(videoEl){
+  const msg = describeVideoError(videoEl.error);
+  let errDiv = videoEl.parentElement.querySelector('.video-err');
+  if(!errDiv){
+    errDiv = document.createElement('div');
+    errDiv.className = 'error video-err';
+    errDiv.style.margin = '8px 14px 0';
+    videoEl.insertAdjacentElement('afterend', errDiv);
+  }
+  errDiv.textContent = 'Lỗi phát video / Video error: ' + msg;
+};
+
+/* ---------- Trim video ---------- */
+const videoFile = document.getElementById('videoFile');
+const sourceVideo = document.getElementById('sourceVideo');
+const startInput = document.getElementById('startInput');
+const endInput = document.getElementById('endInput');
+const trimBtn = document.getElementById('trimBtn');
+const trimStatus = document.getElementById('trimStatus');
+const trimError = document.getElementById('trimError');
+const trimmedPreviewWrap = document.getElementById('trimmedPreviewWrap');
+const trimmedPreview = document.getElementById('trimmedPreview');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const postBtn = document.getElementById('postBtn');
+
+let trimmedBlob = null;
+let ffmpegInstance = null;
+
+function tryAutoFillDuration(){
+  const dur = sourceVideo.duration;
+  if(isFinite(dur) && dur > 0){
+    endInput.value = dur.toFixed(1);
+  }
+}
+
+const useOriginalBtn = document.getElementById('useOriginalBtn');
+const unsupportedHint = document.getElementById('unsupportedHint');
+
+videoFile.addEventListener('change', () => {
+  const file = videoFile.files[0];
+  if(!file) return;
+  sourceVideo.src = URL.createObjectURL(file);
+  sourceVideo.load();
+  trimError.textContent = '';
+  trimStatus.textContent = '';
+  trimmedPreviewWrap.style.display = 'none';
+  trimmedBlob = null;
+  postBtn.disabled = true;
+  unsupportedHint.style.display = 'none';
+  const oldVidErr = sourceVideo.parentElement.querySelector('.video-err');
+  if(oldVidErr) oldVidErr.remove();
+
+  sourceVideo.addEventListener('loadedmetadata', tryAutoFillDuration, { once:true });
+});
+
+useOriginalBtn.addEventListener('click', () => {
+  const file = videoFile.files[0];
+  if(!file){
+    trimError.textContent = 'Vui lòng chọn video trước. / Please choose a video first.';
+    return;
+  }
+  // Một số điện thoại không gán đúng loại định dạng (MIME type) khi chọn video — tự đoán lại theo đuôi file để trình duyệt nhận diện đúng
+  let blobForPost = file;
+  if(!file.type){
+    const ext = (file.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
+    const guessedType = ext === '.mov' ? 'video/quicktime' : ext === '.mp4' ? 'video/mp4' : 'video/mp4';
+    blobForPost = new Blob([file], { type: guessedType });
+  }
+  trimmedBlob = blobForPost;
+  trimmedPreview.src = URL.createObjectURL(blobForPost);
+  trimmedPreviewWrap.style.display = 'block';
+  const sizeKB = Math.round(blobForPost.size / 1024);
+  trimStatus.textContent = 'Đã dùng nguyên video (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Using full video (~' + sizeKB + ' KB) — preview below, then fill in the info.';
+  trimError.textContent = '';
+  postBtn.disabled = false;
+});
+
+startInput.addEventListener('input', () => {
+  try{ sourceVideo.currentTime = parseFloat(startInput.value) || 0; }catch(e){ /* bỏ qua nếu video không hỗ trợ tua */ }
+});
+endInput.addEventListener('input', () => {
+  try{ sourceVideo.currentTime = parseFloat(endInput.value) || 0; }catch(e){ /* bỏ qua nếu video không hỗ trợ tua */ }
+});
+
+trimBtn.addEventListener('click', async () => {
+  trimError.textContent = '';
+  trimStatus.textContent = '';
+  postBtn.disabled = true;
+  trimmedBlob = null;
+
+  const file = videoFile.files[0];
+  if(!file){
+    trimError.textContent = 'Vui lòng chọn video trước. / Please choose a video first.';
+    return;
+  }
+  const start = parseFloat(startInput.value);
+  const end = parseFloat(endInput.value);
+  if(end <= start){
+    trimError.textContent = 'Điểm kết thúc phải sau điểm bắt đầu. / End point must come after start.';
+    return;
+  }
+
+  trimBtn.disabled = true;
+  trimStatus.textContent = 'Đang tải công cụ cắt video (chỉ lần đầu, cần mạng)... / Loading trim engine (first time only, needs internet)...';
+
+  try{
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    if(!ffmpegInstance){
+      ffmpegInstance = createFFmpeg({ log:false });
+      await ffmpegInstance.load();
+    }
+    const ffmpeg = ffmpegInstance;
+
+    trimStatus.textContent = 'Đang cắt video, có thể mất chút thời gian... / Trimming, may take a moment...';
+    const ext = (file.name.match(/\.[^.]+$/) || ['.mp4'])[0];
+    const inputName = 'input' + ext;
+
+    ffmpeg.FS('writeFile', inputName, await fetchFile(file));
+
+    // Luôn mã hoá lại thành H.264/AAC chuẩn để mọi trình duyệt/điện thoại phát được
+    // (video .mov từ iPhone thường dùng HEVC, sao chép trực tiếp có thể không phát được)
+    await ffmpeg.run(
+      '-ss', String(start), '-to', String(end), '-i', inputName,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-movflags', '+faststart',
+      'output.mp4'
+    );
+
+    const data = ffmpeg.FS('readFile', 'output.mp4');
+    if(!data || data.length < 1000){
+      throw new Error('File xuất ra bị rỗng hoặc lỗi (thiết bị có thể không đủ tài nguyên xử lý). / Output file is empty or broken (device may not have enough resources).');
+    }
+    const blob = new Blob([data.buffer], { type:'video/mp4' });
+    try{ ffmpeg.FS('unlink', inputName); ffmpeg.FS('unlink', 'output.mp4'); }catch(cleanupErr){ /* bỏ qua */ }
+
+    trimmedBlob = blob;
+    trimmedPreview.src = URL.createObjectURL(blob);
+    trimmedPreviewWrap.style.display = 'block';
+    const sizeKB = Math.round(blob.size / 1024);
+    trimStatus.textContent = 'Đã cắt xong (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Trimmed (~' + sizeKB + ' KB) — preview below, then fill in the info.';
+    postBtn.disabled = false;
+  }catch(err){
+    const msg = (err && err.message) ? err.message : String(err);
+    trimError.textContent = 'Không cắt được video (' + msg + '). Hãy dùng nút "Dùng nguyên video" bên dưới. / Could not trim (' + msg + '). Use "Use full video" below.';
+    unsupportedHint.style.display = 'block';
+  }finally{
+    trimBtn.disabled = false;
+  }
+});
+
+/* ---------- Post / feeds ---------- */
+function refreshStudentOptions(){
+  const list = document.getElementById('studentList');
+  list.innerHTML = appData.students.map(s => `<option value="${escapeHtml(s)}">`).join('');
+  const sel = document.getElementById('parentStudentSelect');
+  if(appData.students.length === 0){
+    sel.innerHTML = '<option value="">Chưa có học sinh nào</option>';
+  } else {
+    sel.innerHTML = appData.students.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  }
+}
+
+function renderTeacherFeed(){
+  const feed = document.getElementById('teacherFeed');
+  if(appData.posts.length === 0){
+    feed.innerHTML = '<div class="empty">Chưa có bài nào. / No posts yet.</div>';
+    return;
+  }
+  const sorted = [...appData.posts].sort((a,b) => b.createdAt - a.createdAt).slice(0, 5);
+  feed.innerHTML = sorted.map(postToHtml).join('');
+}
+
+function renderParentView(){
+  refreshStudentOptions();
+  const sel = document.getElementById('parentStudentSelect');
+  sel.onchange = renderParentFeed;
+  renderParentFeed();
+}
+
+function renderParentFeed(){
+  const sel = document.getElementById('parentStudentSelect');
+  const chosen = sel.value;
+  const feed = document.getElementById('parentFeed');
+  const filtered = appData.posts.filter(p => p.student === chosen).sort((a,b) => b.createdAt - a.createdAt);
+  if(!chosen || filtered.length === 0){
+    feed.innerHTML = '<div class="empty">Chưa có video nào cho bé này. / No videos for this child yet.</div>';
+    return;
+  }
+  feed.innerHTML = filtered.map(postToHtml).join('');
+}
+
+function postToHtml(p){
+  const className = p.className || '';
+  const blob = videoBlobs.get(p.videoKey);
+  const videoSrc = blob ? URL.createObjectURL(blob) : null;
+  return `
+    <div class="report-card">
+      <div class="report-header">
+        <span class="report-deco deco-star1">✦</span>
+        <span class="report-deco deco-sun">☀</span>
+        <span class="report-deco deco-star2">✧</span>
+        <div class="report-title">NHẬT KÝ CỦA BÉ / CHILD'S JOURNAL</div>
+      </div>
+      <div class="report-fields">
+        <div class="field-chip"><span class="icon">🧒</span>${escapeHtml(p.student)}</div>
+        ${className ? `<div class="field-chip"><span class="icon">🏫</span>${escapeHtml(className)}</div>` : ''}
+      </div>
+      <div class="report-video">
+        ${videoSrc ? `<video src="${videoSrc}" controls playsinline preload="metadata" onerror="window.reportVidErr(this)"></video>` : '<div class="empty" style="color:#fff;">Không tải được video / Video unavailable</div>'}
+      </div>
+      <div class="report-note">${escapeHtml(p.note)}</div>
+      <div class="report-date">${escapeHtml(p.date)}</div>
+    </div>`;
+}
+
+postBtn.addEventListener('click', () => {
+  const postError = document.getElementById('postError');
+  const postStatus = document.getElementById('postStatus');
+  postError.textContent = '';
+  postStatus.textContent = '';
+
+  const student = document.getElementById('studentInput').value.trim();
+  const className = document.getElementById('classInput').value.trim();
+  const note = document.getElementById('noteInput').value.trim();
+
+  if(!student || !note){
+    postError.textContent = 'Vui lòng điền tên học sinh và nhận xét. / Please fill in the student name and note.';
+    return;
+  }
+  if(!trimmedBlob){
+    postError.textContent = 'Vui lòng cắt video ở bước 1 trước khi đăng. / Please trim a video in step 1 first.';
+    return;
+  }
+
+  const videoKey = 'vid-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+  videoBlobs.set(videoKey, trimmedBlob);
+
+  if(!appData.students.includes(student)) appData.students.push(student);
+  appData.posts.push({
+    student, className, note, videoKey,
+    date: todayStr,
+    createdAt: Date.now()
+  });
+
+  postStatus.textContent = 'Đã đăng — chuyển sang tab "Phụ huynh" để xem thử. / Posted — switch to the "Parent" tab to preview.';
+  document.getElementById('studentInput').value = '';
+  document.getElementById('classInput').value = '';
+  document.getElementById('noteInput').value = '';
+  videoFile.value = '';
+  sourceVideo.removeAttribute('src');
+  trimmedPreviewWrap.style.display = 'none';
+  trimmedBlob = null;
+  postBtn.disabled = true;
+  refreshStudentOptions();
+  renderTeacherFeed();
+});
+
+refreshStudentOptions();
+renderTeacherFeed();
+</script>
+</body>
+</html>
