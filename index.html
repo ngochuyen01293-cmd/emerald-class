@@ -6,6 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Emerald's Class – Nhật ký lớp học</title>
 <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --ink:#2b2a26; --paper:#faf7f0; --card:#ffffff; --line:#e4dfd1;
@@ -144,8 +146,6 @@
 
   <p class="sub">Giáo viên chọn video, cắt đoạn cần dùng, gắn tên bé/lớp/nhận xét — phụ huynh xem trực tiếp, không cần Zalo.<br>
   Teacher selects a video, trims it, adds the child's name/class/note — parents watch it directly, no Zalo needed.</p>
-  <p class="warn">Lưu ý: bản demo này chạy trong trình duyệt của bạn, dữ liệu mất khi tải lại trang (F5).<br>
-  Note: this is a browser-only demo — data is lost if you reload the page (F5).</p>
 
   <div class="tabs">
     <div class="tab active" id="tabTeacher">Giáo viên / Teacher</div>
@@ -215,9 +215,42 @@
   <canvas id="canvas"></canvas>
 
 <script>
-/* ---------- Dữ liệu trong bộ nhớ tạm (mất khi tải lại trang) ---------- */
-const appData = { students: [], posts: [] };
-const videoBlobs = new Map(); // videoKey -> Blob
+/* ========== CẤU HÌNH FIREBASE — điền thông tin dự án của bạn vào đây ==========
+   Vào console.firebase.google.com → dự án của bạn → biểu tượng bánh răng
+   → Project settings → cuộn xuống "Your apps" → copy đoạn firebaseConfig, dán đè vào bên dưới. */
+const firebaseConfig = {
+  apiKey: "AIzaSyA_SqYiEsf3MKwLX2SSTPgAt8MdrSrFmRQ",
+  authDomain: "emerald-class.firebaseapp.com",
+  projectId: "emerald-class",
+  storageBucket: "emerald-class.firebasestorage.app",
+  messagingSenderId: "213482288475",
+  appId: "1:213482288475:web:b2acd36d4820a9411e567e"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* ========== CẤU HÌNH CLOUDINARY — nơi lưu trữ video (miễn phí, không cần thẻ) ==========
+   Vào cloudinary.com → Dashboard → copy "Cloud name"
+   Settings → Upload → Upload presets → tạo preset kiểu "Unsigned" → copy tên preset */
+const CLOUDINARY_CLOUD_NAME = "jga7i2hk";
+const CLOUDINARY_UPLOAD_PRESET = "emerald_class";
+
+async function uploadVideoToCloudinary(blob){
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
+  const formData = new FormData();
+  formData.append('file', blob);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(url, { method: 'POST', body: formData });
+  if(!res.ok){
+    const errText = await res.text();
+    throw new Error('Cloudinary: ' + errText);
+  }
+  const data = await res.json();
+  return data.secure_url;
+}
+/* ================================================================================ */
+
+/* ---------- (Firestore/Storage thay thế bộ nhớ tạm trước đây) ---------- */
 
 /* ---------- Tabs ---------- */
 const tabTeacher = document.getElementById('tabTeacher');
@@ -399,51 +432,66 @@ trimBtn.addEventListener('click', async () => {
   }
 });
 
-/* ---------- Post / feeds ---------- */
-function refreshStudentOptions(){
+/* ---------- Post / feeds (dùng Firebase Firestore + Storage) ---------- */
+async function refreshStudentOptions(){
   const list = document.getElementById('studentList');
-  list.innerHTML = appData.students.map(s => `<option value="${escapeHtml(s)}">`).join('');
   const sel = document.getElementById('parentStudentSelect');
-  if(appData.students.length === 0){
-    sel.innerHTML = '<option value="">Chưa có học sinh nào</option>';
-  } else {
-    sel.innerHTML = appData.students.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  try{
+    const snap = await db.collection('posts').get();
+    const names = [...new Set(snap.docs.map(d => d.data().student))];
+    list.innerHTML = names.map(s => `<option value="${escapeHtml(s)}">`).join('');
+    sel.innerHTML = names.length
+      ? names.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')
+      : '<option value="">Chưa có học sinh nào / No students yet</option>';
+  }catch(err){
+    console.error(err);
   }
 }
 
-function renderTeacherFeed(){
+async function renderTeacherFeed(){
   const feed = document.getElementById('teacherFeed');
-  if(appData.posts.length === 0){
-    feed.innerHTML = '<div class="empty">Chưa có bài nào. / No posts yet.</div>';
-    return;
+  feed.innerHTML = '<div class="empty">Đang tải... / Loading...</div>';
+  try{
+    const snap = await db.collection('posts').orderBy('createdAt', 'desc').limit(5).get();
+    if(snap.empty){
+      feed.innerHTML = '<div class="empty">Chưa có bài nào. / No posts yet.</div>';
+      return;
+    }
+    feed.innerHTML = snap.docs.map(d => postToHtml(d.data())).join('');
+  }catch(err){
+    feed.innerHTML = '<div class="error">Không tải được danh sách: ' + escapeHtml(err.message) + '</div>';
   }
-  const sorted = [...appData.posts].sort((a,b) => b.createdAt - a.createdAt).slice(0, 5);
-  feed.innerHTML = sorted.map(postToHtml).join('');
 }
 
 function renderParentView(){
   refreshStudentOptions();
   const sel = document.getElementById('parentStudentSelect');
   sel.onchange = renderParentFeed;
-  renderParentFeed();
 }
 
-function renderParentFeed(){
+async function renderParentFeed(){
   const sel = document.getElementById('parentStudentSelect');
   const chosen = sel.value;
   const feed = document.getElementById('parentFeed');
-  const filtered = appData.posts.filter(p => p.student === chosen).sort((a,b) => b.createdAt - a.createdAt);
-  if(!chosen || filtered.length === 0){
+  if(!chosen){
     feed.innerHTML = '<div class="empty">Chưa có video nào cho bé này. / No videos for this child yet.</div>';
     return;
   }
-  feed.innerHTML = filtered.map(postToHtml).join('');
+  feed.innerHTML = '<div class="empty">Đang tải... / Loading...</div>';
+  try{
+    const snap = await db.collection('posts').where('student', '==', chosen).orderBy('createdAt', 'desc').get();
+    if(snap.empty){
+      feed.innerHTML = '<div class="empty">Chưa có video nào cho bé này. / No videos for this child yet.</div>';
+      return;
+    }
+    feed.innerHTML = snap.docs.map(d => postToHtml(d.data())).join('');
+  }catch(err){
+    feed.innerHTML = '<div class="error">Không tải được video: ' + escapeHtml(err.message) + '</div>';
+  }
 }
 
 function postToHtml(p){
   const className = p.className || '';
-  const blob = videoBlobs.get(p.videoKey);
-  const videoSrc = blob ? URL.createObjectURL(blob) : null;
   return `
     <div class="report-card">
       <div class="report-header">
@@ -457,14 +505,14 @@ function postToHtml(p){
         ${className ? `<div class="field-chip"><span class="icon">🏫</span>${escapeHtml(className)}</div>` : ''}
       </div>
       <div class="report-video">
-        ${videoSrc ? `<video src="${videoSrc}" controls playsinline preload="metadata" onerror="window.reportVidErr(this)"></video>` : '<div class="empty" style="color:#fff;">Không tải được video / Video unavailable</div>'}
+        ${p.videoURL ? `<video src="${p.videoURL}" controls playsinline preload="metadata" onerror="window.reportVidErr(this)"></video>` : '<div class="empty" style="color:#fff;">Không tải được video / Video unavailable</div>'}
       </div>
       <div class="report-note">${escapeHtml(p.note)}</div>
       <div class="report-date">${escapeHtml(p.date)}</div>
     </div>`;
 }
 
-postBtn.addEventListener('click', () => {
+postBtn.addEventListener('click', async () => {
   const postError = document.getElementById('postError');
   const postStatus = document.getElementById('postStatus');
   postError.textContent = '';
@@ -483,27 +531,34 @@ postBtn.addEventListener('click', () => {
     return;
   }
 
-  const videoKey = 'vid-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-  videoBlobs.set(videoKey, trimmedBlob);
-
-  if(!appData.students.includes(student)) appData.students.push(student);
-  appData.posts.push({
-    student, className, note, videoKey,
-    date: todayStr,
-    createdAt: Date.now()
-  });
-
-  postStatus.textContent = 'Đã đăng — chuyển sang tab "Phụ huynh" để xem thử. / Posted — switch to the "Parent" tab to preview.';
-  document.getElementById('studentInput').value = '';
-  document.getElementById('classInput').value = '';
-  document.getElementById('noteInput').value = '';
-  videoFile.value = '';
-  sourceVideo.removeAttribute('src');
-  trimmedPreviewWrap.style.display = 'none';
-  trimmedBlob = null;
   postBtn.disabled = true;
-  refreshStudentOptions();
-  renderTeacherFeed();
+  postStatus.textContent = 'Đang tải video lên... / Uploading video...';
+
+  try{
+    const videoURL = await uploadVideoToCloudinary(trimmedBlob);
+
+    postStatus.textContent = 'Đang lưu thông tin... / Saving info...';
+    await db.collection('posts').add({
+      student, className, note, videoURL,
+      date: todayStr,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    postStatus.textContent = 'Đã đăng — chuyển sang tab "Phụ huynh" để xem thử. / Posted — switch to the "Parent" tab to preview.';
+    document.getElementById('studentInput').value = '';
+    document.getElementById('classInput').value = '';
+    document.getElementById('noteInput').value = '';
+    videoFile.value = '';
+    sourceVideo.removeAttribute('src');
+    trimmedPreviewWrap.style.display = 'none';
+    trimmedBlob = null;
+    await refreshStudentOptions();
+    await renderTeacherFeed();
+  }catch(err){
+    postError.textContent = 'Không đăng được: ' + err.message + ' / Could not post: ' + err.message;
+  }finally{
+    postBtn.disabled = false;
+  }
 });
 
 refreshStudentOptions();
