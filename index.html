@@ -1,15 +1,10 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+<script src="coi-serviceworker.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Emerald's Class – Nhật ký lớp học</title>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Emerald's Class">
-<meta name="theme-color" content="#5a7d5a">
 <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 <style>
   :root{
@@ -169,16 +164,15 @@
 
       <label for="endInput">Điểm kết thúc (giây) / End point (seconds)</label>
       <input type="number" id="endInput" min="0" step="0.5" value="5">
-      <p class="hint">Nếu video xem trước không hiện được, bạn vẫn có thể tự gõ số giây và cắt bình thường — không bắt buộc phải xem trước được. / If the preview doesn't play, you can still type the seconds directly and trim normally — a working preview isn't required.</p>
+      <p class="hint">Nếu video xem trước không hiện được, bạn vẫn có thể tự gõ số giây và cắt bình thường. / If the preview doesn't play, you can still type the seconds directly.</p>
 
       <button class="btn-secondary" id="trimBtn">Cắt đoạn đã chọn / Trim clip</button>
       <button class="btn-secondary" id="useOriginalBtn">Dùng nguyên video, không cắt / Use full video, no trim</button>
       <div class="status" id="trimStatus"></div>
       <div class="error" id="trimError"></div>
-      <p class="hint" id="unsupportedHint" style="display:none;">Nếu vẫn không cắt được, hãy cắt video trước bằng ứng dụng Ảnh sẵn có trên điện thoại, rồi tải lên và bấm "Dùng nguyên video" ở trên. / If trimming still fails, trim it first in your Photos app, then upload it here and tap "Use full video" above.</p>
 
       <div id="trimmedPreviewWrap" style="display:none;">
-        <label>Đoạn đã cắt / Trimmed preview</label>
+        <label>Xem lại trước khi đăng / Preview before posting</label>
         <video id="trimmedPreview" controls playsinline onerror="window.reportVidErr(this)"></video>
       </div>
     </section>
@@ -218,8 +212,7 @@
     </section>
     <div id="parentFeed"></div>
   </div>
-
-<canvas id="canvas"></canvas>
+  <canvas id="canvas"></canvas>
 
 <script>
 /* ---------- Dữ liệu trong bộ nhớ tạm (mất khi tải lại trang) ---------- */
@@ -289,11 +282,11 @@ const trimError = document.getElementById('trimError');
 const trimmedPreviewWrap = document.getElementById('trimmedPreviewWrap');
 const trimmedPreview = document.getElementById('trimmedPreview');
 const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
 const postBtn = document.getElementById('postBtn');
 
 let trimmedBlob = null;
 let ffmpegInstance = null;
+const useOriginalBtn = document.getElementById('useOriginalBtn');
 
 function tryAutoFillDuration(){
   const dur = sourceVideo.duration;
@@ -301,9 +294,6 @@ function tryAutoFillDuration(){
     endInput.value = dur.toFixed(1);
   }
 }
-
-const useOriginalBtn = document.getElementById('useOriginalBtn');
-const unsupportedHint = document.getElementById('unsupportedHint');
 
 videoFile.addEventListener('change', () => {
   const file = videoFile.files[0];
@@ -315,10 +305,8 @@ videoFile.addEventListener('change', () => {
   trimmedPreviewWrap.style.display = 'none';
   trimmedBlob = null;
   postBtn.disabled = true;
-  unsupportedHint.style.display = 'none';
   const oldVidErr = sourceVideo.parentElement.querySelector('.video-err');
   if(oldVidErr) oldVidErr.remove();
-
   sourceVideo.addEventListener('loadedmetadata', tryAutoFillDuration, { once:true });
 });
 
@@ -339,16 +327,9 @@ useOriginalBtn.addEventListener('click', () => {
   trimmedPreview.src = URL.createObjectURL(blobForPost);
   trimmedPreviewWrap.style.display = 'block';
   const sizeKB = Math.round(blobForPost.size / 1024);
-  trimStatus.textContent = 'Đã dùng nguyên video (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Using full video (~' + sizeKB + ' KB) — preview below, then fill in the info.';
+  trimStatus.textContent = 'Đã chọn video (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Video selected (~' + sizeKB + ' KB) — preview below, then fill in the info.';
   trimError.textContent = '';
   postBtn.disabled = false;
-});
-
-startInput.addEventListener('input', () => {
-  try{ sourceVideo.currentTime = parseFloat(startInput.value) || 0; }catch(e){ /* bỏ qua nếu video không hỗ trợ tua */ }
-});
-endInput.addEventListener('input', () => {
-  try{ sourceVideo.currentTime = parseFloat(endInput.value) || 0; }catch(e){ /* bỏ qua nếu video không hỗ trợ tua */ }
 });
 
 trimBtn.addEventListener('click', async () => {
@@ -368,6 +349,10 @@ trimBtn.addEventListener('click', async () => {
     trimError.textContent = 'Điểm kết thúc phải sau điểm bắt đầu. / End point must come after start.';
     return;
   }
+  if(!window.crossOriginIsolated){
+    trimError.textContent = 'Trang chưa sẵn sàng để cắt video (thiếu chế độ bảo mật đặc biệt). Hãy tải lại trang (kéo xuống để refresh) rồi thử lại. / Page isn\'t ready to trim yet. Please reload the page and try again.';
+    return;
+  }
 
   trimBtn.disabled = true;
   trimStatus.textContent = 'Đang tải công cụ cắt video (chỉ lần đầu, cần mạng)... / Loading trim engine (first time only, needs internet)...';
@@ -375,10 +360,7 @@ trimBtn.addEventListener('click', async () => {
   try{
     const { createFFmpeg, fetchFile } = FFmpeg;
     if(!ffmpegInstance){
-      ffmpegInstance = createFFmpeg({
-        log:false,
-        corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
-      });
+      ffmpegInstance = createFFmpeg({ log:false });
       await ffmpegInstance.load();
     }
     const ffmpeg = ffmpegInstance;
@@ -389,8 +371,6 @@ trimBtn.addEventListener('click', async () => {
 
     ffmpeg.FS('writeFile', inputName, await fetchFile(file));
 
-    // Luôn mã hoá lại thành H.264/AAC chuẩn để mọi trình duyệt/điện thoại phát được
-    // (video .mov từ iPhone thường dùng HEVC, sao chép trực tiếp có thể không phát được)
     await ffmpeg.run(
       '-ss', String(start), '-to', String(end), '-i', inputName,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
@@ -400,7 +380,7 @@ trimBtn.addEventListener('click', async () => {
 
     const data = ffmpeg.FS('readFile', 'output.mp4');
     if(!data || data.length < 1000){
-      throw new Error('File xuất ra bị rỗng hoặc lỗi (thiết bị có thể không đủ tài nguyên xử lý). / Output file is empty or broken (device may not have enough resources).');
+      throw new Error('File xuất ra bị rỗng hoặc lỗi. / Output file is empty or broken.');
     }
     const blob = new Blob([data.buffer], { type:'video/mp4' });
     try{ ffmpeg.FS('unlink', inputName); ffmpeg.FS('unlink', 'output.mp4'); }catch(cleanupErr){ /* bỏ qua */ }
@@ -414,7 +394,6 @@ trimBtn.addEventListener('click', async () => {
   }catch(err){
     const msg = (err && err.message) ? err.message : String(err);
     trimError.textContent = 'Không cắt được video (' + msg + '). Hãy dùng nút "Dùng nguyên video" bên dưới. / Could not trim (' + msg + '). Use "Use full video" below.';
-    unsupportedHint.style.display = 'block';
   }finally{
     trimBtn.disabled = false;
   }
