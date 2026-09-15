@@ -246,7 +246,9 @@ async function uploadVideoToCloudinary(blob){
     throw new Error('Cloudinary: ' + errText);
   }
   const data = await res.json();
-  return data.secure_url;
+  // Ép Cloudinary luôn trả về video định dạng H.264/mp4 chuẩn, bất kể định dạng file gốc là gì
+  // (video .mov từ một số thiết bị/app đặc biệt có thể dùng codec mà trình duyệt không phát được nếu giữ nguyên)
+  return data.secure_url.replace('/upload/', '/upload/f_mp4,vc_h264/');
 }
 /* ================================================================================ */
 
