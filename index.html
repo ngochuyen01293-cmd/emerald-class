@@ -231,14 +231,18 @@ async function uploadVideoToCloudinary(blob){
   const formData = new FormData();
   formData.append('file', blob);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  // Yêu cầu Cloudinary chuyển đổi sẵn sang H.264/mp4 ngay lúc tải lên (không phải lúc phát),
+  // để tránh lỗi phát video trên Safari/iPhone với kiểu chuyển đổi tức thời khi xem
+  formData.append('eager', 'f_mp4,vc_h264');
   const res = await fetch(url, { method: 'POST', body: formData });
   if(!res.ok){
     const errText = await res.text();
     throw new Error('Cloudinary: ' + errText);
   }
   const data = await res.json();
-  // Ép Cloudinary luôn trả về video định dạng H.264/mp4 chuẩn, bất kể định dạng file gốc là gì
-  // (video .mov từ một số thiết bị/app đặc biệt có thể dùng codec mà trình duyệt không phát được nếu giữ nguyên)
+  if(data.eager && data.eager[0] && data.eager[0].secure_url){
+    return data.eager[0].secure_url;
+  }
   return data.secure_url.replace('/upload/', '/upload/f_mp4,vc_h264/');
 }
 /* ================================================================================ */
