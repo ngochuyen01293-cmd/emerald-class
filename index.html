@@ -432,6 +432,11 @@ postBtn.addEventListener('click', async () => {
   try{
     const videoURL = await uploadVideoToCloudinary(file, startSec, endSec);
 
+    // "Làm nóng" link video — ép Cloudinary tạo xong bản đã cắt/chuyển đổi ngay bây giờ,
+    // thay vì để đến lúc phụ huynh mở mới tạo (dễ gây lỗi phát video lần đầu trên iPhone)
+    postStatus.textContent = 'Đang xử lý video... / Processing video...';
+    try{ await fetch(videoURL, { mode: 'no-cors' }); }catch(warmErr){ /* bỏ qua nếu lỗi, không chặn đăng bài */ }
+
     postStatus.textContent = 'Đang lưu thông tin... / Saving info...';
     await db.collection('posts').add({
       student, className, note, videoURL,
