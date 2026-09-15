@@ -481,12 +481,13 @@ async function renderParentFeed(){
   }
   feed.innerHTML = '<div class="empty">Đang tải... / Loading...</div>';
   try{
-    const snap = await db.collection('posts').where('student', '==', chosen).orderBy('createdAt', 'desc').get();
+    const snap = await db.collection('posts').where('student', '==', chosen).get();
     if(snap.empty){
       feed.innerHTML = '<div class="empty">Chưa có video nào cho bé này. / No videos for this child yet.</div>';
       return;
     }
-    feed.innerHTML = snap.docs.map(d => postToHtml(d.data())).join('');
+    const docs = snap.docs.map(d => d.data()).sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    feed.innerHTML = docs.map(postToHtml).join('');
   }catch(err){
     feed.innerHTML = '<div class="error">Không tải được video: ' + escapeHtml(err.message) + '</div>';
   }
