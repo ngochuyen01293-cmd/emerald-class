@@ -229,26 +229,19 @@ async function uploadVideoToCloudinary(blob, startSec, endSec){
   const formData = new FormData();
   formData.append('file', blob);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  // Cắt video ngay trên máy chủ Cloudinary (so_=điểm bắt đầu, eo_=điểm kết thúc, tính bằng giây)
-  // rồi chuyển sang H.264/mp4 chuẩn — không phụ thuộc điện thoại/trình duyệt của giáo viên
-  let eager = 'f_mp4,vc_h264';
-  if(startSec !== null || endSec !== null){
-    const parts = [];
-    if(startSec !== null) parts.push('so_' + startSec);
-    if(endSec !== null) parts.push('eo_' + endSec);
-    eager = parts.join(',') + ',f_mp4,vc_h264';
-  }
-  formData.append('eager', eager);
   const res = await fetch(url, { method: 'POST', body: formData });
   if(!res.ok){
     const errText = await res.text();
     throw new Error('Cloudinary: ' + errText);
   }
   const data = await res.json();
-  if(data.eager && data.eager[0] && data.eager[0].secure_url){
-    return data.eager[0].secure_url;
-  }
-  return data.secure_url.replace('/upload/', '/upload/' + eager + '/');
+  // Gắn thông số cắt (so_=bắt đầu, eo_=kết thúc, tính bằng giây) và chuyển sang H.264/mp4 chuẩn
+  // ngay trong link xem — Cloudinary xử lý ở lần đầu ai đó mở link, không cần điện thoại giáo viên xử lý
+  const parts = [];
+  if(startSec !== null) parts.push('so_' + startSec);
+  if(endSec !== null) parts.push('eo_' + endSec);
+  parts.push('f_mp4', 'vc_h264');
+  return data.secure_url.replace('/upload/', '/upload/' + parts.join(',') + '/');
 }
 /* ================================================================================ */
 
