@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<script src="coi-serviceworker.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Emerald's Class – Nhật ký lớp học</title>
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <style>
@@ -155,19 +153,12 @@
   <!-- TEACHER VIEW -->
   <div id="teacherView">
     <section>
-      <h2>1. Chọn và cắt video / Choose &amp; trim video</h2>
+      <h2>1. Chọn video / Choose video</h2>
       <input type="file" id="videoFile" accept="video/*">
       <video id="sourceVideo" playsinline preload="metadata" onerror="window.reportVidErr(this)"></video>
+      <p class="hint">Nếu cần cắt gọn video, hãy cắt trước bằng ứng dụng Ảnh hoặc CapCut sẵn có trên điện thoại, rồi chọn video đã cắt đó ở đây. / If you need to trim the clip, do it first in your Photos app or CapCut, then choose the trimmed video here.</p>
 
-      <label for="startInput">Điểm bắt đầu (giây) / Start point (seconds)</label>
-      <input type="number" id="startInput" min="0" step="0.5" value="0">
-
-      <label for="endInput">Điểm kết thúc (giây) / End point (seconds)</label>
-      <input type="number" id="endInput" min="0" step="0.5" value="5">
-      <p class="hint">Nếu video xem trước không hiện được, bạn vẫn có thể tự gõ số giây và cắt bình thường. / If the preview doesn't play, you can still type the seconds directly.</p>
-
-      <button class="btn-secondary" id="trimBtn">Cắt đoạn đã chọn / Trim clip</button>
-      <button class="btn-secondary" id="useOriginalBtn">Dùng nguyên video, không cắt / Use full video, no trim</button>
+      <button class="btn-primary" id="useOriginalBtn">Dùng video này / Use this video</button>
       <div class="status" id="trimStatus"></div>
       <div class="error" id="trimError"></div>
 
@@ -306,29 +297,17 @@ window.reportVidErr = function(videoEl){
   errDiv.textContent = 'Lỗi phát video / Video error: ' + msg;
 };
 
-/* ---------- Trim video ---------- */
+/* ---------- Choose & post video ---------- */
 const videoFile = document.getElementById('videoFile');
 const sourceVideo = document.getElementById('sourceVideo');
-const startInput = document.getElementById('startInput');
-const endInput = document.getElementById('endInput');
-const trimBtn = document.getElementById('trimBtn');
 const trimStatus = document.getElementById('trimStatus');
 const trimError = document.getElementById('trimError');
 const trimmedPreviewWrap = document.getElementById('trimmedPreviewWrap');
 const trimmedPreview = document.getElementById('trimmedPreview');
-const canvas = document.getElementById('canvas');
 const postBtn = document.getElementById('postBtn');
 
 let trimmedBlob = null;
-let ffmpegInstance = null;
 const useOriginalBtn = document.getElementById('useOriginalBtn');
-
-function tryAutoFillDuration(){
-  const dur = sourceVideo.duration;
-  if(isFinite(dur) && dur > 0){
-    endInput.value = dur.toFixed(1);
-  }
-}
 
 videoFile.addEventListener('change', () => {
   const file = videoFile.files[0];
@@ -342,7 +321,6 @@ videoFile.addEventListener('change', () => {
   postBtn.disabled = true;
   const oldVidErr = sourceVideo.parentElement.querySelector('.video-err');
   if(oldVidErr) oldVidErr.remove();
-  sourceVideo.addEventListener('loadedmetadata', tryAutoFillDuration, { once:true });
 });
 
 useOriginalBtn.addEventListener('click', () => {
@@ -365,73 +343,6 @@ useOriginalBtn.addEventListener('click', () => {
   trimStatus.textContent = 'Đã chọn video (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Video selected (~' + sizeKB + ' KB) — preview below, then fill in the info.';
   trimError.textContent = '';
   postBtn.disabled = false;
-});
-
-trimBtn.addEventListener('click', async () => {
-  trimError.textContent = '';
-  trimStatus.textContent = '';
-  postBtn.disabled = true;
-  trimmedBlob = null;
-
-  const file = videoFile.files[0];
-  if(!file){
-    trimError.textContent = 'Vui lòng chọn video trước. / Please choose a video first.';
-    return;
-  }
-  const start = parseFloat(startInput.value);
-  const end = parseFloat(endInput.value);
-  if(end <= start){
-    trimError.textContent = 'Điểm kết thúc phải sau điểm bắt đầu. / End point must come after start.';
-    return;
-  }
-  if(!window.crossOriginIsolated){
-    trimError.textContent = 'Trang chưa sẵn sàng để cắt video (thiếu chế độ bảo mật đặc biệt). Hãy tải lại trang (kéo xuống để refresh) rồi thử lại. / Page isn\'t ready to trim yet. Please reload the page and try again.';
-    return;
-  }
-
-  trimBtn.disabled = true;
-  trimStatus.textContent = 'Đang tải công cụ cắt video (chỉ lần đầu, cần mạng)... / Loading trim engine (first time only, needs internet)...';
-
-  try{
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    if(!ffmpegInstance){
-      ffmpegInstance = createFFmpeg({ log:false });
-      await ffmpegInstance.load();
-    }
-    const ffmpeg = ffmpegInstance;
-
-    trimStatus.textContent = 'Đang cắt video, có thể mất chút thời gian... / Trimming, may take a moment...';
-    const ext = (file.name.match(/\.[^.]+$/) || ['.mp4'])[0];
-    const inputName = 'input' + ext;
-
-    ffmpeg.FS('writeFile', inputName, await fetchFile(file));
-
-    await ffmpeg.run(
-      '-ss', String(start), '-to', String(end), '-i', inputName,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-movflags', '+faststart',
-      'output.mp4'
-    );
-
-    const data = ffmpeg.FS('readFile', 'output.mp4');
-    if(!data || data.length < 1000){
-      throw new Error('File xuất ra bị rỗng hoặc lỗi. / Output file is empty or broken.');
-    }
-    const blob = new Blob([data.buffer], { type:'video/mp4' });
-    try{ ffmpeg.FS('unlink', inputName); ffmpeg.FS('unlink', 'output.mp4'); }catch(cleanupErr){ /* bỏ qua */ }
-
-    trimmedBlob = blob;
-    trimmedPreview.src = URL.createObjectURL(blob);
-    trimmedPreviewWrap.style.display = 'block';
-    const sizeKB = Math.round(blob.size / 1024);
-    trimStatus.textContent = 'Đã cắt xong (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Trimmed (~' + sizeKB + ' KB) — preview below, then fill in the info.';
-    postBtn.disabled = false;
-  }catch(err){
-    const msg = (err && err.message) ? err.message : String(err);
-    trimError.textContent = 'Không cắt được video (' + msg + '). Hãy dùng nút "Dùng nguyên video" bên dưới. / Could not trim (' + msg + '). Use "Use full video" below.';
-  }finally{
-    trimBtn.disabled = false;
-  }
 });
 
 /* ---------- Post / feeds (dùng Firebase Firestore + Storage) ---------- */
