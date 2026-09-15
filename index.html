@@ -155,17 +155,15 @@
     <section>
       <h2>1. Chọn video / Choose video</h2>
       <input type="file" id="videoFile" accept="video/*">
-      <video id="sourceVideo" playsinline preload="metadata" onerror="window.reportVidErr(this)"></video>
-      <p class="hint">Nếu cần cắt gọn video, hãy cắt trước bằng ứng dụng Ảnh hoặc CapCut sẵn có trên điện thoại, rồi chọn video đã cắt đó ở đây. / If you need to trim the clip, do it first in your Photos app or CapCut, then choose the trimmed video here.</p>
+      <video id="sourceVideo" playsinline preload="metadata" controls onerror="window.reportVidErr(this)"></video>
 
-      <button class="btn-primary" id="useOriginalBtn">Dùng video này / Use this video</button>
-      <div class="status" id="trimStatus"></div>
+      <label for="startInput">Cắt từ giây (để trống = từ đầu) / Trim from second (blank = from start)</label>
+      <input type="number" id="startInput" min="0" step="0.5" placeholder="VD/E.g. 2">
+
+      <label for="endInput">Đến giây (để trống = đến hết) / To second (blank = to the end)</label>
+      <input type="number" id="endInput" min="0" step="0.5" placeholder="VD/E.g. 8">
+      <p class="hint">Việc cắt sẽ do máy chủ xử lý khi đăng bài, không cần cắt trước — hoạt động trên mọi điện thoại. / Trimming happens on the server when you post — no pre-trimming needed, works on any phone.</p>
       <div class="error" id="trimError"></div>
-
-      <div id="trimmedPreviewWrap" style="display:none;">
-        <label>Xem lại trước khi đăng / Preview before posting</label>
-        <video id="trimmedPreview" controls playsinline onerror="window.reportVidErr(this)"></video>
-      </div>
     </section>
 
     <section>
@@ -183,7 +181,7 @@
       <label for="noteInput">Nhận xét về bé / Note about the child</label>
       <textarea id="noteInput" placeholder="Hôm nay bé... / Today, ..."></textarea>
 
-      <button class="btn-primary" id="postBtn" disabled>Đăng cho phụ huynh xem / Post for parents</button>
+      <button class="btn-primary" id="postBtn">Đăng cho phụ huynh xem / Post for parents</button>
       <div class="error" id="postError"></div>
       <div class="status" id="postStatus"></div>
     </section>
@@ -226,14 +224,21 @@ const db = firebase.firestore();
 const CLOUDINARY_CLOUD_NAME = "jga7i2hk";
 const CLOUDINARY_UPLOAD_PRESET = "emerald_class";
 
-async function uploadVideoToCloudinary(blob){
+async function uploadVideoToCloudinary(blob, startSec, endSec){
   const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
   const formData = new FormData();
   formData.append('file', blob);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  // Yêu cầu Cloudinary chuyển đổi sẵn sang H.264/mp4 ngay lúc tải lên (không phải lúc phát),
-  // để tránh lỗi phát video trên Safari/iPhone với kiểu chuyển đổi tức thời khi xem
-  formData.append('eager', 'f_mp4,vc_h264');
+  // Cắt video ngay trên máy chủ Cloudinary (so_=điểm bắt đầu, eo_=điểm kết thúc, tính bằng giây)
+  // rồi chuyển sang H.264/mp4 chuẩn — không phụ thuộc điện thoại/trình duyệt của giáo viên
+  let eager = 'f_mp4,vc_h264';
+  if(startSec !== null || endSec !== null){
+    const parts = [];
+    if(startSec !== null) parts.push('so_' + startSec);
+    if(endSec !== null) parts.push('eo_' + endSec);
+    eager = parts.join(',') + ',f_mp4,vc_h264';
+  }
+  formData.append('eager', eager);
   const res = await fetch(url, { method: 'POST', body: formData });
   if(!res.ok){
     const errText = await res.text();
@@ -243,7 +248,7 @@ async function uploadVideoToCloudinary(blob){
   if(data.eager && data.eager[0] && data.eager[0].secure_url){
     return data.eager[0].secure_url;
   }
-  return data.secure_url.replace('/upload/', '/upload/f_mp4,vc_h264/');
+  return data.secure_url.replace('/upload/', '/upload/' + eager + '/');
 }
 /* ================================================================================ */
 
@@ -304,14 +309,10 @@ window.reportVidErr = function(videoEl){
 /* ---------- Choose & post video ---------- */
 const videoFile = document.getElementById('videoFile');
 const sourceVideo = document.getElementById('sourceVideo');
-const trimStatus = document.getElementById('trimStatus');
 const trimError = document.getElementById('trimError');
-const trimmedPreviewWrap = document.getElementById('trimmedPreviewWrap');
-const trimmedPreview = document.getElementById('trimmedPreview');
+const startInput = document.getElementById('startInput');
+const endInput = document.getElementById('endInput');
 const postBtn = document.getElementById('postBtn');
-
-let trimmedBlob = null;
-const useOriginalBtn = document.getElementById('useOriginalBtn');
 
 videoFile.addEventListener('change', () => {
   const file = videoFile.files[0];
@@ -319,34 +320,8 @@ videoFile.addEventListener('change', () => {
   sourceVideo.src = URL.createObjectURL(file);
   sourceVideo.load();
   trimError.textContent = '';
-  trimStatus.textContent = '';
-  trimmedPreviewWrap.style.display = 'none';
-  trimmedBlob = null;
-  postBtn.disabled = true;
   const oldVidErr = sourceVideo.parentElement.querySelector('.video-err');
   if(oldVidErr) oldVidErr.remove();
-});
-
-useOriginalBtn.addEventListener('click', () => {
-  const file = videoFile.files[0];
-  if(!file){
-    trimError.textContent = 'Vui lòng chọn video trước. / Please choose a video first.';
-    return;
-  }
-  // Một số điện thoại không gán đúng loại định dạng (MIME type) khi chọn video — tự đoán lại theo đuôi file để trình duyệt nhận diện đúng
-  let blobForPost = file;
-  if(!file.type){
-    const ext = (file.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
-    const guessedType = ext === '.mov' ? 'video/quicktime' : ext === '.mp4' ? 'video/mp4' : 'video/mp4';
-    blobForPost = new Blob([file], { type: guessedType });
-  }
-  trimmedBlob = blobForPost;
-  trimmedPreview.src = URL.createObjectURL(blobForPost);
-  trimmedPreviewWrap.style.display = 'block';
-  const sizeKB = Math.round(blobForPost.size / 1024);
-  trimStatus.textContent = 'Đã chọn video (~' + sizeKB + ' KB) — xem lại rồi điền thông tin. / Video selected (~' + sizeKB + ' KB) — preview below, then fill in the info.';
-  trimError.textContent = '';
-  postBtn.disabled = false;
 });
 
 /* ---------- Post / feeds (dùng Firebase Firestore + Storage) ---------- */
@@ -439,21 +414,30 @@ postBtn.addEventListener('click', async () => {
   const student = document.getElementById('studentInput').value.trim();
   const className = document.getElementById('classInput').value.trim();
   const note = document.getElementById('noteInput').value.trim();
+  const file = videoFile.files[0];
 
   if(!student || !note){
     postError.textContent = 'Vui lòng điền tên học sinh và nhận xét. / Please fill in the student name and note.';
     return;
   }
-  if(!trimmedBlob){
-    postError.textContent = 'Vui lòng cắt video ở bước 1 trước khi đăng. / Please trim a video in step 1 first.';
+  if(!file){
+    postError.textContent = 'Vui lòng chọn video trước khi đăng. / Please choose a video before posting.';
+    return;
+  }
+  const startVal = startInput.value.trim();
+  const endVal = endInput.value.trim();
+  const startSec = startVal === '' ? null : parseFloat(startVal);
+  const endSec = endVal === '' ? null : parseFloat(endVal);
+  if(startSec !== null && endSec !== null && endSec <= startSec){
+    postError.textContent = 'Giây kết thúc phải sau giây bắt đầu. / End second must come after start second.';
     return;
   }
 
   postBtn.disabled = true;
-  postStatus.textContent = 'Đang tải video lên... / Uploading video...';
+  postStatus.textContent = 'Đang tải video lên và cắt (nếu có)... / Uploading and trimming (if set)...';
 
   try{
-    const videoURL = await uploadVideoToCloudinary(trimmedBlob);
+    const videoURL = await uploadVideoToCloudinary(file, startSec, endSec);
 
     postStatus.textContent = 'Đang lưu thông tin... / Saving info...';
     await db.collection('posts').add({
@@ -466,10 +450,10 @@ postBtn.addEventListener('click', async () => {
     document.getElementById('studentInput').value = '';
     document.getElementById('classInput').value = '';
     document.getElementById('noteInput').value = '';
+    startInput.value = '';
+    endInput.value = '';
     videoFile.value = '';
     sourceVideo.removeAttribute('src');
-    trimmedPreviewWrap.style.display = 'none';
-    trimmedBlob = null;
     await refreshStudentOptions();
     await renderTeacherFeed();
   }catch(err){
