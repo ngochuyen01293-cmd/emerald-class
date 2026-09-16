@@ -236,7 +236,10 @@ async function uploadVideoToCloudinary(blob, startSec, endSec){
 
   // Xin chữ ký từ "người gác cổng" (Google Apps Script) trước khi tải lên
   const signRes = await fetch(SIGN_ENDPOINT + '?eager=' + encodeURIComponent(eager));
-  if(!signRes.ok) throw new Error('Không lấy được chữ ký xác nhận. / Could not get signature.');
+  if(!signRes.ok){
+    const errText = await signRes.text().catch(() => '');
+    throw new Error('Không lấy được chữ ký (status ' + signRes.status + '): ' + errText.slice(0,200));
+  }
   const signData = await signRes.json();
 
   const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
