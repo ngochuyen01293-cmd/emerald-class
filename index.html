@@ -153,10 +153,15 @@
   <!-- TEACHER VIEW -->
   <div id="teacherView">
     <section>
-      <h2>1. Chọn video / Choose video</h2>
+      <h2>1. Chọn và cắt video / Choose &amp; trim video</h2>
       <input type="file" id="videoFile" accept="video/*">
       <video id="sourceVideo" playsinline preload="metadata" controls onerror="window.reportVidErr(this)"></video>
-      <p class="hint">Nếu cần cắt gọn video, hãy cắt trước bằng ứng dụng Ảnh hoặc CapCut sẵn có trên điện thoại, rồi chọn video đã cắt đó ở đây. / If you need to trim the clip, do it first in your Photos app or CapCut, then choose the trimmed video here.</p>
+
+      <label for="startInput">Cắt từ giây (để trống = từ đầu) / Trim from second (blank = from start)</label>
+      <input type="number" id="startInput" min="0" step="0.5" placeholder="VD/E.g. 2">
+
+      <label for="endInput">Đến giây (để trống = đến hết) / To second (blank = to the end)</label>
+      <input type="number" id="endInput" min="0" step="0.5" placeholder="VD/E.g. 8">
       <div class="error" id="trimError"></div>
     </section>
 
@@ -213,24 +218,43 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 /* ========== CẤU HÌNH CLOUDINARY — nơi lưu trữ video (miễn phí, không cần thẻ) ==========
-   Vào cloudinary.com → Dashboard → copy "Cloud name"
-   Settings → Upload → Upload presets → tạo preset kiểu "Unsigned" → copy tên preset */
+   Vào cloudinary.com → Dashboard → copy "Cloud name" và "API Key" (Settings → API Keys) */
 const CLOUDINARY_CLOUD_NAME = "jga7i2hk";
-const CLOUDINARY_UPLOAD_PRESET = "emerald_class";
+const CLOUDINARY_API_KEY = "59834379921547";
 
-async function uploadVideoToCloudinary(blob){
+/* ========== CẤU HÌNH GOOGLE APPS SCRIPT — "người gác cổng" cho phép cắt video ==========
+   Dán URL Web App sau khi deploy (script.google.com) vào đây */
+const SIGN_ENDPOINT = "https://script.google.com/macros/s/AKfycbyS28wsOFWvu_6yJVmk96IL06YnJusLXMhkKOyEWFw7SResoujcGO1AUUecb2WolapaYA/exec";
+
+async function uploadVideoToCloudinary(blob, startSec, endSec){
+  // Ghép chuỗi transformation: cắt (nếu có) + luôn chuyển sang H.264/mp4 chuẩn
+  const parts = [];
+  if(startSec !== null) parts.push('so_' + startSec);
+  if(endSec !== null) parts.push('eo_' + endSec);
+  parts.push('f_mp4', 'vc_h264');
+  const eager = parts.join(',');
+
+  // Xin chữ ký từ "người gác cổng" (Google Apps Script) trước khi tải lên
+  const signRes = await fetch(SIGN_ENDPOINT + '?eager=' + encodeURIComponent(eager));
+  if(!signRes.ok) throw new Error('Không lấy được chữ ký xác nhận. / Could not get signature.');
+  const signData = await signRes.json();
+
   const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
   const formData = new FormData();
   formData.append('file', blob);
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  formData.append('api_key', CLOUDINARY_API_KEY);
+  formData.append('timestamp', signData.timestamp);
+  formData.append('signature', signData.signature);
+  formData.append('eager', eager);
+
   const res = await fetch(url, { method: 'POST', body: formData });
   if(!res.ok){
     const errText = await res.text();
     throw new Error('Cloudinary: ' + errText);
   }
   const data = await res.json();
-  // Dùng bản đã tạo sẵn (eager, cấu hình trong upload preset trên Cloudinary) nếu có —
-  // đây là file tĩnh thật sự, phát ổn định trên mọi điện thoại, khác với việc tạo "theo yêu cầu" lúc xem
+  // Tải lên có ký xác nhận sẽ tạo sẵn bản đã cắt/chuyển đổi ngay lập tức (không phải "theo yêu cầu"),
+  // nên phát ổn định trên mọi điện thoại
   if(data.eager && data.eager[0] && data.eager[0].secure_url){
     return data.eager[0].secure_url;
   }
@@ -408,12 +432,20 @@ postBtn.addEventListener('click', async () => {
     postError.textContent = 'Vui lòng chọn video trước khi đăng. / Please choose a video before posting.';
     return;
   }
+  const startVal = document.getElementById('startInput').value.trim();
+  const endVal = document.getElementById('endInput').value.trim();
+  const startSec = startVal === '' ? null : parseFloat(startVal);
+  const endSec = endVal === '' ? null : parseFloat(endVal);
+  if(startSec !== null && endSec !== null && endSec <= startSec){
+    postError.textContent = 'Giây kết thúc phải sau giây bắt đầu. / End second must come after start second.';
+    return;
+  }
 
   postBtn.disabled = true;
-  postStatus.textContent = 'Đang tải video lên... / Uploading video...';
+  postStatus.textContent = 'Đang tải video lên và cắt... / Uploading and trimming...';
 
   try{
-    const videoURL = await uploadVideoToCloudinary(file);
+    const videoURL = await uploadVideoToCloudinary(file, startSec, endSec);
 
     postStatus.textContent = 'Đang lưu thông tin... / Saving info...';
     await db.collection('posts').add({
@@ -426,6 +458,8 @@ postBtn.addEventListener('click', async () => {
     document.getElementById('studentInput').value = '';
     document.getElementById('classInput').value = '';
     document.getElementById('noteInput').value = '';
+    document.getElementById('startInput').value = '';
+    document.getElementById('endInput').value = '';
     videoFile.value = '';
     sourceVideo.removeAttribute('src');
     await refreshStudentOptions();
