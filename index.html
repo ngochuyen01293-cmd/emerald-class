@@ -156,13 +156,7 @@
       <h2>1. Chọn video / Choose video</h2>
       <input type="file" id="videoFile" accept="video/*">
       <video id="sourceVideo" playsinline preload="metadata" controls onerror="window.reportVidErr(this)"></video>
-
-      <label for="startInput">Cắt từ giây (để trống = từ đầu) / Trim from second (blank = from start)</label>
-      <input type="number" id="startInput" min="0" step="0.5" placeholder="VD/E.g. 2">
-
-      <label for="endInput">Đến giây (để trống = đến hết) / To second (blank = to the end)</label>
-      <input type="number" id="endInput" min="0" step="0.5" placeholder="VD/E.g. 8">
-      <p class="hint">Việc cắt sẽ do máy chủ xử lý khi đăng bài, không cần cắt trước — hoạt động trên mọi điện thoại. / Trimming happens on the server when you post — no pre-trimming needed, works on any phone.</p>
+      <p class="hint">Nếu cần cắt gọn video, hãy cắt trước bằng ứng dụng Ảnh hoặc CapCut sẵn có trên điện thoại, rồi chọn video đã cắt đó ở đây. / If you need to trim the clip, do it first in your Photos app or CapCut, then choose the trimmed video here.</p>
       <div class="error" id="trimError"></div>
     </section>
 
@@ -224,7 +218,7 @@ const db = firebase.firestore();
 const CLOUDINARY_CLOUD_NAME = "jga7i2hk";
 const CLOUDINARY_UPLOAD_PRESET = "emerald_class";
 
-async function uploadVideoToCloudinary(blob, startSec, endSec){
+async function uploadVideoToCloudinary(blob){
   const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
   const formData = new FormData();
   formData.append('file', blob);
@@ -235,13 +229,12 @@ async function uploadVideoToCloudinary(blob, startSec, endSec){
     throw new Error('Cloudinary: ' + errText);
   }
   const data = await res.json();
-  // Gắn thông số cắt (so_=bắt đầu, eo_=kết thúc, tính bằng giây) và chuyển sang H.264/mp4 chuẩn
-  // ngay trong link xem — Cloudinary xử lý ở lần đầu ai đó mở link, không cần điện thoại giáo viên xử lý
-  const parts = [];
-  if(startSec !== null) parts.push('so_' + startSec);
-  if(endSec !== null) parts.push('eo_' + endSec);
-  parts.push('f_mp4', 'vc_h264');
-  return data.secure_url.replace('/upload/', '/upload/' + parts.join(',') + '/');
+  // Dùng bản đã tạo sẵn (eager, cấu hình trong upload preset trên Cloudinary) nếu có —
+  // đây là file tĩnh thật sự, phát ổn định trên mọi điện thoại, khác với việc tạo "theo yêu cầu" lúc xem
+  if(data.eager && data.eager[0] && data.eager[0].secure_url){
+    return data.eager[0].secure_url;
+  }
+  return data.secure_url;
 }
 /* ================================================================================ */
 
@@ -303,8 +296,6 @@ window.reportVidErr = function(videoEl){
 const videoFile = document.getElementById('videoFile');
 const sourceVideo = document.getElementById('sourceVideo');
 const trimError = document.getElementById('trimError');
-const startInput = document.getElementById('startInput');
-const endInput = document.getElementById('endInput');
 const postBtn = document.getElementById('postBtn');
 
 videoFile.addEventListener('change', () => {
@@ -417,25 +408,12 @@ postBtn.addEventListener('click', async () => {
     postError.textContent = 'Vui lòng chọn video trước khi đăng. / Please choose a video before posting.';
     return;
   }
-  const startVal = startInput.value.trim();
-  const endVal = endInput.value.trim();
-  const startSec = startVal === '' ? null : parseFloat(startVal);
-  const endSec = endVal === '' ? null : parseFloat(endVal);
-  if(startSec !== null && endSec !== null && endSec <= startSec){
-    postError.textContent = 'Giây kết thúc phải sau giây bắt đầu. / End second must come after start second.';
-    return;
-  }
 
   postBtn.disabled = true;
-  postStatus.textContent = 'Đang tải video lên và cắt (nếu có)... / Uploading and trimming (if set)...';
+  postStatus.textContent = 'Đang tải video lên... / Uploading video...';
 
   try{
-    const videoURL = await uploadVideoToCloudinary(file, startSec, endSec);
-
-    // "Làm nóng" link video — ép Cloudinary tạo xong bản đã cắt/chuyển đổi ngay bây giờ,
-    // thay vì để đến lúc phụ huynh mở mới tạo (dễ gây lỗi phát video lần đầu trên iPhone)
-    postStatus.textContent = 'Đang xử lý video... / Processing video...';
-    try{ await fetch(videoURL, { mode: 'no-cors' }); }catch(warmErr){ /* bỏ qua nếu lỗi, không chặn đăng bài */ }
+    const videoURL = await uploadVideoToCloudinary(file);
 
     postStatus.textContent = 'Đang lưu thông tin... / Saving info...';
     await db.collection('posts').add({
@@ -448,8 +426,6 @@ postBtn.addEventListener('click', async () => {
     document.getElementById('studentInput').value = '';
     document.getElementById('classInput').value = '';
     document.getElementById('noteInput').value = '';
-    startInput.value = '';
-    endInput.value = '';
     videoFile.value = '';
     sourceVideo.removeAttribute('src');
     await refreshStudentOptions();
