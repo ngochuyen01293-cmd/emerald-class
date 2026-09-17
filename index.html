@@ -289,6 +289,10 @@ tabParent.onclick = () => {
   renderParentView();
 };
 
+if(!isTeacherUnlocked){
+  tabParent.click();
+}
+
 const todayDisplay = document.getElementById('todayDisplay');
 const today = new Date();
 const todayStr = today.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' });
