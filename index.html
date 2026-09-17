@@ -270,6 +270,15 @@ const tabParent = document.getElementById('tabParent');
 const teacherView = document.getElementById('teacherView');
 const parentView = document.getElementById('parentView');
 
+// Mã bí mật để giáo viên truy cập — đổi thành mã riêng của bạn nếu muốn
+const TEACHER_CODE = "emerald2026";
+const urlParams = new URLSearchParams(window.location.search);
+const isTeacherUnlocked = urlParams.get('teacher') === TEACHER_CODE;
+
+if(!isTeacherUnlocked){
+  tabTeacher.style.display = 'none';
+}
+
 tabTeacher.onclick = () => {
   tabTeacher.classList.add('active'); tabParent.classList.remove('active');
   teacherView.style.display = 'block'; parentView.style.display = 'none';
